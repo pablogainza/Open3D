@@ -345,7 +345,10 @@ void pybind_registration_methods(py::module &m) {
           "ransac_n"_a = 4,
           "checkers"_a = std::vector<
                   std::reference_wrapper<const CorrespondenceChecker>>(),
-          "criteria"_a = RANSACConvergenceCriteria(100000, 100));
+          "criteria"_a = RANSACConvergenceCriteria(100000, 100),
+          "ransac_random_seed"_a = 0.0,
+          "fitness_type"_a = 0 // 0: standard ransac fitness function. 1: use the number of inliers (instead of the ration); 2: use 1/d^2 for inliers, where d is descriptor distance.
+          );
     m.def("registration_fast_based_on_feature_matching",
           &FastGlobalRegistration,
           "Function for fast global registration based on feature matching",

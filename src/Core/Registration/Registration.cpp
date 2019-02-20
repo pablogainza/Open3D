@@ -28,6 +28,7 @@
 
 #include <cstdlib>
 #include <ctime>
+#include <iostream>
 
 #include <Core/Utility/Console.h>
 #include <Core/Geometry/PointCloud.h>
@@ -37,6 +38,101 @@
 namespace open3d {
 
 namespace {
+
+// PGC 2019: include the fitness type and the features for a custom fitness function.
+RegistrationResult GetRegistrationResultAndCorrespondencesCustom(
+        const PointCloud &source,
+        const PointCloud &target,
+        const KDTreeFlann &target_kdtree,
+        double max_correspondence_distance,
+        const Eigen::Matrix4d &transformation, 
+        const Feature &source_feature,
+        const Feature &target_feature,
+        const int fitness_type
+        ) {
+    RegistrationResult result(transformation);
+    if (max_correspondence_distance <= 0.0) {
+        return std::move(result);
+    }
+
+    double error2 = 0.0;
+
+#ifdef _OPENMP
+#pragma omp parallel
+    {
+#endif
+        double error2_private = 0.0;
+        CorrespondenceSet correspondence_set_private;
+#ifdef _OPENMP
+#pragma omp for nowait
+#endif
+        for (int i = 0; i < (int)source.points_.size(); i++) {
+            std::vector<int> indices(1);
+            std::vector<double> dists(1);
+            const auto &point = source.points_[i];
+            if (target_kdtree.SearchHybrid(point, max_correspondence_distance,
+                                           1, indices, dists) > 0) {
+                error2_private += dists[0];
+                correspondence_set_private.push_back(
+                        Eigen::Vector2i(i, indices[0]));
+            }
+        }
+#ifdef _OPENMP
+#pragma omp critical
+#endif
+        {
+            for (int i = 0; i < (int)correspondence_set_private.size(); i++) {
+                result.correspondence_set_.push_back(
+                        correspondence_set_private[i]);
+            }
+            error2 += error2_private;
+        }
+#ifdef _OPENMP
+    }
+#endif
+
+    if (result.correspondence_set_.empty()) {
+        result.fitness_ = 0.0;
+        result.inlier_rmse_ = 0.0;
+    } else {
+        size_t corres_number = result.correspondence_set_.size();
+        //result.fitness_ = (double)corres_number / (double)source.points_.size();
+        if(fitness_type == 1){
+            // PGC 2019: fitness: the number of correspondences
+            result.fitness_ = (double)corres_number; 
+        }
+        else{
+            if(fitness_type == 2){
+                // Compute the descriptor distances for all pairs of correspondences.
+                double myfitness = 0;
+                for (int i = 0; i < (int)result.correspondence_set_.size(); i++) {
+                    int s_vix =  result.correspondence_set_[i][0];
+                    int t_vix = result.correspondence_set_[i][1];
+                    Eigen::VectorXd feat_s = Eigen::VectorXd(source_feature.data_.col(s_vix));
+                    Eigen::VectorXd feat_t = Eigen::VectorXd(target_feature.data_.col(t_vix));
+                    double desc_dist = 0.0;
+//                    std::cout << "Dimension = " << source_feature.Dimension() << std::endl;
+//                    std::cout << "Size = " << source_feature.Num() << std::endl;
+                    for (int j = 0; j < source_feature.Dimension(); j++){
+                        double dist = feat_t[j] - feat_s[j];
+                        dist = dist*dist; 
+                        desc_dist += dist;
+                    }
+
+                    myfitness += 1.0/desc_dist;
+                }
+                 
+                result.fitness_ = myfitness;
+            
+            }
+            else{
+                result.fitness_ = (double)corres_number / (double)source.points_.size();
+            }
+        }
+        result.inlier_rmse_ = std::sqrt(error2 / (double)corres_number);
+    }
+    return std::move(result);
+}
 
 RegistrationResult GetRegistrationResultAndCorrespondences(
         const PointCloud &source,
@@ -90,7 +186,9 @@ RegistrationResult GetRegistrationResultAndCorrespondences(
         result.inlier_rmse_ = 0.0;
     } else {
         size_t corres_number = result.correspondence_set_.size();
-        result.fitness_ = (double)corres_number / (double)source.points_.size();
+        //result.fitness_ = (double)corres_number / (double)source.points_.size();
+        // PGC 2019: fitness is the number of correspondences, not the fraction.
+        result.fitness_ = (double)corres_number; 
         result.inlier_rmse_ = std::sqrt(error2 / (double)corres_number);
     }
     return std::move(result);
@@ -248,7 +346,10 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
         int ransac_n /* = 4*/,
         const std::vector<std::reference_wrapper<const CorrespondenceChecker>>
                 &checkers /* = {}*/,
-        const RANSACConvergenceCriteria &criteria
+        const RANSACConvergenceCriteria &criteria,
+        const double ransac_random_seed, /* default: 0*/
+        const int fitness_type /* 0: standard ransac fitness function. 1: use the number of inliers (instead of the ration); 2: use 1/d^2 for inliers, where d is descriptor distance.*/
+
         /* = RANSACConvergenceCriteria()*/) {
     if (ransac_n < 3 || max_correspondence_distance <= 0.0) {
         return RegistrationResult();
@@ -259,6 +360,7 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
     bool finished_validation = false;
     int num_similar_features = 1;
     std::vector<std::vector<int>> similar_features(source.points_.size());
+
 
 #ifdef _OPENMP
 #pragma omp parallel
@@ -271,9 +373,11 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
         unsigned int seed_number;
 #ifdef _OPENMP
         // each thread has different seed_number
-        seed_number = (unsigned int)std::time(0) * (omp_get_thread_num() + 1);
+        //seed_number = (unsigned int)std::time(0) * (omp_get_thread_num() + 1);
+        seed_number = (unsigned int)ransac_random_seed * (omp_get_thread_num() + 1);
 #else
-    seed_number = (unsigned int)std::time(0);
+        //seed_number = (unsigned int)std::time(0);
+        seed_number = (unsigned int)ransac_random_seed;//std::time(0);
 #endif
         std::srand(seed_number);
 
@@ -332,9 +436,9 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
                 if (check == false) continue;
                 PointCloud pcd = source;
                 pcd.Transform(transformation);
-                auto this_result = GetRegistrationResultAndCorrespondences(
+                auto this_result = GetRegistrationResultAndCorrespondencesCustom(
                         pcd, target, kdtree, max_correspondence_distance,
-                        transformation);
+                        transformation, source_feature, target_feature, fitness_type);
                 if (this_result.fitness_ > result_private.fitness_ ||
                     (this_result.fitness_ == result_private.fitness_ &&
                      this_result.inlier_rmse_ < result_private.inlier_rmse_)) {

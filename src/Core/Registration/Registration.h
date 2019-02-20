@@ -135,7 +135,10 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
         const std::vector<std::reference_wrapper<const CorrespondenceChecker>>
                 &checkers = {},
         const RANSACConvergenceCriteria &criteria =
-                RANSACConvergenceCriteria());
+                RANSACConvergenceCriteria(),
+       const double ransac_random_seed = 0, /* default: 0*/
+        const int fitness_type  = 0/* 0: standard ransac fitness function. 1: use the number of inliers (instead of the ration); 2: use 1/d^2 for inliers, where d is descriptor distance.*/
+);
 
 /// Function for computing information matrix from RegistrationResult
 Eigen::Matrix6d GetInformationMatrixFromPointClouds(
