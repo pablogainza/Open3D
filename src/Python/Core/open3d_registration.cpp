@@ -349,6 +349,19 @@ void pybind_registration_methods(py::module &m) {
           "ransac_random_seed"_a = 0.0,
           "fitness_type"_a = 0 // 0: standard ransac fitness function. 1: use the number of inliers (instead of the ration); 2: use 1/d^2 for inliers, where d is descriptor distance.
           );
+    m.def("registration_ransac_based_on_shape_complementarity",
+          &RegistrationRANSACBasedOnShapeComplementarity,
+          "Function for global RANSAC registration based on feature matching and shape complementarity",
+          "source"_a, "target"_a, "target_mesh"_a, "target_face_centroids_pcd"_a ,"source_feature"_a, "target_feature"_a,
+          "max_correspondence_distance"_a,
+          "estimation_method"_a = TransformationEstimationPointToPoint(false),
+          "ransac_n"_a = 4,
+          "checkers"_a = std::vector<
+                  std::reference_wrapper<const CorrespondenceChecker>>(),
+          "criteria"_a = RANSACConvergenceCriteria(100000, 100),
+          "ransac_random_seed"_a = 0.0,
+          "fitness_type"_a = 0 // 0: standard ransac fitness function. 1: use the number of inliers (instead of the ration); 2: use 1/d^2 for inliers, where d is descriptor distance.
+          );
     m.def("registration_fast_based_on_feature_matching",
           &FastGlobalRegistration,
           "Function for fast global registration based on feature matching",

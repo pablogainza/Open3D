@@ -33,11 +33,13 @@
 #include <Core/Registration/CorrespondenceChecker.h>
 #include <Core/Registration/TransformationEstimation.h>
 #include <Core/Utility/Eigen.h>
+#include <Core/Geometry/TriangleMesh.h>
 
 namespace open3d {
 
 class PointCloud;
 class Feature;
+class TriangleMesh;
 
 /// Class that defines the convergence criteria of ICP
 /// ICP algorithm stops if the relative change of fitness and rmse hit
@@ -138,6 +140,26 @@ RegistrationResult RegistrationRANSACBasedOnFeatureMatching(
                 RANSACConvergenceCriteria(),
        const double ransac_random_seed = 0, /* default: 0*/
         const int fitness_type  = 0/* 0: standard ransac fitness function. 1: use the number of inliers (instead of the ration); 2: use 1/d^2 for inliers, where d is descriptor distance.*/
+);
+
+/// Function for global RANSAC registration based on feature matching and shape complementarity
+RegistrationResult RegistrationRANSACBasedOnShapeComplementarity(
+        const PointCloud &source,
+        const PointCloud &target,
+        const TriangleMesh &target_mesh,
+        const PointCloud &target_face_centroids_pcd,
+        const Feature &source_feature,
+        const Feature &target_feature,
+        double max_correspondence_distance,
+        const TransformationEstimation &estimation =
+                TransformationEstimationPointToPoint(false),
+        int ransac_n = 4,
+        const std::vector<std::reference_wrapper<const CorrespondenceChecker>>
+                &checkers = {},
+        const RANSACConvergenceCriteria &criteria =
+                RANSACConvergenceCriteria(),
+       const double ransac_random_seed = 0, /* default: 0*/
+       const int fitness_type= 0/* default: 0*/
 );
 
 /// Function for computing information matrix from RegistrationResult
